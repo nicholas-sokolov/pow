@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.server
+    environment:
+      HOST: "0.0.0.0"
+      PORT: "3333"
+      HASHCASH_DIFFICULTY: 5
+      HASHCASH_EXPIRATION: 60
+    ports:
+      - "3333:3333"
+    restart: always
+
+  client:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.client
+    environment:
+      HOST: "server"
+      PORT: "3333"
+    depends_on:
+      - server
