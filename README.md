@@ -1,3 +1,6 @@
-Proof of Work (Hashcash)
+## Proof of Work (Hashcash)
 
-client - server, protection from DDoS attack
+#### Description
+This is client - server application, which uses PoW as protection from DDoS attack
+
+
