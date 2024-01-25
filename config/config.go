@@ -27,13 +27,13 @@ func LoadEnv(path string) {
 func GetRedisHost() string {
 	host := os.Getenv("REDIS_HOST")
 	if host == "" {
-		log.Printf("REDIS_HOST not found, will be used default: %d", redisHost)
+		log.Printf("REDIS_HOST not found, will be used default: %s", redisHost)
 		host = redisHost
 	}
 
 	port := os.Getenv("REDIS_PORT")
 	if port == "" {
-		log.Printf("REDIS_PORT not found, will be used default: %d", port)
+		log.Printf("REDIS_PORT not found, will be used default: %s", port)
 		port = redisPort
 	}
 
