@@ -6,13 +6,12 @@ import (
 )
 
 func TestMessage_ChallengeMessage(t *testing.T) {
-	m := Message{}
 	address := "test_address"
 
-	m.ChallengeMessage(address)
+	msg := getChallengeMessage(address)
 
-	if !m.isResponseChallenge() {
-		t.Errorf("RequestType = %d; want %d", m.RequestType, responseChallenge)
+	if !msg.isResponseChallenge() {
+		t.Errorf("RequestType = %d; want %d", msg.RequestType, responseChallenge)
 	}
 
 }

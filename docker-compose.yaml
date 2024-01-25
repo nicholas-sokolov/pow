@@ -8,11 +8,15 @@ services:
     environment:
       HOST: "0.0.0.0"
       PORT: "3333"
-      HASHCASH_DIFFICULTY: 5
+      HASHCASH_DIFFICULTY: 4
       HASHCASH_EXPIRATION: 60
+      REDIS_HOST: "redis"
+      REDIS_PORT: "6379"
     ports:
       - "3333:3333"
     restart: always
+    depends_on:
+      - redis
 
   client:
     build:
@@ -23,3 +27,16 @@ services:
       PORT: "3333"
     depends_on:
       - server
+
+  redis:
+    restart: always
+    image: bitnami/redis:latest
+    environment:
+      - ALLOW_EMPTY_PASSWORD=yes
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+
+volumes:
+  redisdata:

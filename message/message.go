@@ -1,12 +1,16 @@
 package message
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"github.com/nicholas-sokolov/test_task/config"
 	"github.com/nicholas-sokolov/test_task/pow"
 	"github.com/nicholas-sokolov/test_task/quote"
+	"github.com/redis/go-redis/v9"
 	"log"
+	"time"
 )
 
 const (
@@ -22,60 +26,88 @@ type Message struct {
 	Quote       quote.Quote
 }
 
-func (m *Message) ChallengeMessage(address string) {
-	m.RequestType = responseChallenge
-	m.Header = *pow.NewHashcashData(address)
+func getChallengeMessage(addr string) *Message {
+	return &Message{
+		RequestType: responseChallenge,
+		Header:      *pow.NewHashcashData(addr),
+	}
 }
 
-func (m *Message) ResponseDataMessage() error {
-	// check expiration
-	if m.Header.IsExpired() {
-		return fmt.Errorf("hashcash is expired")
+func getResponseDataMessage(msg Message) (*Message, error) {
+	var respMessage Message
+
+	if !msg.Header.IsValid() {
+		return nil, fmt.Errorf("hashcash is not valid")
 	}
 
-	// check if difficulty was overridden
-	if m.Header.Difficulty != config.GetDifficulty() {
-		return fmt.Errorf("difficulty was overridden")
-	}
-
-	if !m.Header.IsValid() {
-		return fmt.Errorf("hashcash is not valid")
-	}
-
-	m.RequestType = responseData
+	msg.RequestType = responseData
 	q, err := quote.GetQuote()
 	if err != nil {
-		return fmt.Errorf("error to get a quote: %v", err)
+		return nil, fmt.Errorf("error to get a quote: %v", err)
 	}
 
-	m.Quote = *q
+	respMessage.RequestType = responseData
+	respMessage.Quote = *q
 
-	return nil
+	return &respMessage, nil
 }
 
-func (m *Message) ProcessServerMessage(addr string) ([]byte, error) {
+func (m *Message) ProcessServerMessage(ctx context.Context, addr string) ([]byte, error) {
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     config.GetRedisHost(),
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
+
+	var msg *Message
+
 	switch {
 	case m.isRequestChallenge():
-		m.ChallengeMessage(addr)
+
+		msg = getChallengeMessage(addr)
+
+		cachedData, err := getCacheValue(*msg)
+		if err != nil {
+			return nil, fmt.Errorf("error to convert value for cache: %v", err)
+		}
+
+		expiration := time.Duration(config.GetExpiration()) * time.Second
+		err = rdb.SetEx(ctx, addr, cachedData, expiration).Err()
+		if err != nil {
+			return nil, fmt.Errorf("error to set cache: %v", err)
+		}
 
 	case m.isRequestData():
 		log.Println("validating challenge")
 
-		err := m.ResponseDataMessage()
+		val, err := rdb.GetDel(ctx, addr).Result()
 		if err != nil {
-			return nil, err
+			if errors.Is(err, redis.Nil) {
+				return nil, fmt.Errorf("no cached value, probably expired")
+			}
+			return nil, fmt.Errorf("error to get cache: %v", err)
 		}
+
+		var cachedHeader pow.HashcashData
+		err = json.Unmarshal([]byte(val), &cachedHeader)
+		if err != nil {
+			return nil, fmt.Errorf("error to unmarshal cached value: %v", err)
+		}
+
+		cachedHeader.Counter = m.Header.Counter
+		if cachedHeader != m.Header {
+			return nil, fmt.Errorf("cached and value from request are not equal")
+		}
+
+		msg, err = getResponseDataMessage(*m)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get response data: %v", err)
+		}
+	default:
+		return nil, fmt.Errorf("unknonw message type: %d", m.RequestType)
 	}
 
-	msg, err := json.Marshal(m)
-	if err != nil {
-		return nil, fmt.Errorf("error to marshal callenge, %v", err)
-	}
-
-	// add '\n' to the message
-	msg = append(msg, byte('\n'))
-
-	return msg, nil
+	return msg.preparePayload()
 }
 
 func (m *Message) ProcessClientMessage() ([]byte, error) {
@@ -131,4 +163,13 @@ func (m *Message) isRequestData() bool {
 
 func (m *Message) isResponseData() bool {
 	return m.RequestType == responseData
+}
+
+func getCacheValue(msg Message) ([]byte, error) {
+	msg.Header.Counter = 0
+	data, err := json.Marshal(msg.Header)
+	if err != nil {
+		return nil, fmt.Errorf("error to marshal header")
+	}
+	return data, nil
 }

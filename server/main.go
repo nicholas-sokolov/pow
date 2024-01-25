@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -44,6 +45,8 @@ func handleConn(conn net.Conn) {
 
 	r := bufio.NewReader(conn)
 
+	var ctx = context.Background()
+
 	for {
 		msg, err := r.ReadBytes('\n')
 		if err != nil {
@@ -53,15 +56,15 @@ func handleConn(conn net.Conn) {
 			break
 		}
 
-		msg, err = getResponse(msg, addr.String())
+		msg, err = getResponse(ctx, msg, addr.String())
 		if err != nil {
-			log.Println("error to get response", err)
+			log.Println("error to get response:", err)
 			break
 		}
 
 		_, err = conn.Write(msg)
 		if err != nil {
-			log.Println("failed to response data to connection", err)
+			log.Println("failed to response data to connection:", err)
 			break
 		}
 	}
@@ -70,7 +73,7 @@ func handleConn(conn net.Conn) {
 
 }
 
-func getResponse(data []byte, address string) ([]byte, error) {
+func getResponse(ctx context.Context, data []byte, address string) ([]byte, error) {
 	var msg message.Message
 
 	err := json.Unmarshal(data, &msg)
@@ -78,9 +81,9 @@ func getResponse(data []byte, address string) ([]byte, error) {
 		return nil, fmt.Errorf("error to unmarshal message: %v", err)
 	}
 
-	payload, err := msg.ProcessServerMessage(address)
+	payload, err := msg.ProcessServerMessage(ctx, address)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("processing failed: %v", err)
 	}
 
 	return payload, nil
